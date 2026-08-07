@@ -3,6 +3,7 @@ const { crawlSite } = require('../scraper');
 const { analyzeBusiness } = require('../sarvam');
 const { generateCustomerSegments } = require('../customerSegments');
 const { createJob, updateJob, getJob } = require('../jobStore');
+const { runInBackground } = require('../backgroundWork');
 
 const router = express.Router();
 
@@ -19,9 +20,11 @@ router.post('/analyze', (req, res) => {
   // request never stays open long enough to hit a client/proxy timeout.
   res.status(202).json({ jobId, status: 'processing' });
 
-  runAnalysis(jobId, url, pageLimit).catch((err) => {
-    updateJob(jobId, { status: 'error', error: err.message });
-  });
+  runInBackground(
+    runAnalysis(jobId, url, pageLimit).catch((err) => {
+      updateJob(jobId, { status: 'error', error: err.message });
+    })
+  );
 });
 
 async function runAnalysis(jobId, url, pageLimit) {

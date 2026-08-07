@@ -12,6 +12,7 @@ const { writeOutreachEmail } = require('../emailWriter');
 const { deriveLocation } = require('../locationUtil');
 const { createJob, updateJob, getJob } = require('../jobStore');
 const { createSession, getSession, updateSession } = require('../sessionStore');
+const { runInBackground } = require('../backgroundWork');
 
 const router = express.Router();
 
@@ -20,9 +21,11 @@ const router = express.Router();
 // the result on the session so the next step can build on it.
 function startJob(work) {
   const jobId = createJob();
-  work()
-    .then((result) => updateJob(jobId, { status: 'done', result }))
-    .catch((err) => updateJob(jobId, { status: 'error', error: err.message }));
+  runInBackground(
+    work()
+      .then((result) => updateJob(jobId, { status: 'done', result }))
+      .catch((err) => updateJob(jobId, { status: 'error', error: err.message }))
+  );
   return jobId;
 }
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const { scrapeGoogleMaps } = require('../mapsScraper');
 const { createJob, updateJob, getJob } = require('../jobStore');
+const { runInBackground } = require('../backgroundWork');
 
 const router = express.Router();
 
@@ -19,13 +20,15 @@ router.post('/leads/find', (req, res) => {
 
   res.status(202).json({ jobId, status: 'processing' });
 
-  scrapeGoogleMaps(query, location, { maxResults: resultLimit })
-    .then((leads) => {
-      updateJob(jobId, { status: 'done', result: { query, location, leads } });
-    })
-    .catch((err) => {
-      updateJob(jobId, { status: 'error', error: err.message });
-    });
+  runInBackground(
+    scrapeGoogleMaps(query, location, { maxResults: resultLimit })
+      .then((leads) => {
+        updateJob(jobId, { status: 'done', result: { query, location, leads } });
+      })
+      .catch((err) => {
+        updateJob(jobId, { status: 'error', error: err.message });
+      })
+  );
 });
 
 router.get('/leads/:jobId', (req, res) => {

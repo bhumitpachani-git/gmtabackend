@@ -11,6 +11,7 @@ const { findContactInfo, findContactInfoForPerson } = require('../emailFinder');
 const { writeOutreachEmail } = require('../emailWriter');
 const { deriveLocation } = require('../locationUtil');
 const { createJob, updateJob, getJob } = require('../jobStore');
+const { runInBackground } = require('../backgroundWork');
 
 const router = express.Router();
 
@@ -28,9 +29,11 @@ router.post('/grow', (req, res) => {
   // target location, lead search, and contact enrichment — runs automatically.
   res.status(202).json({ jobId, status: 'processing' });
 
-  runGrow(jobId, url, segmentLimit, leadLimit).catch((err) => {
-    updateJob(jobId, { status: 'error', error: err.message });
-  });
+  runInBackground(
+    runGrow(jobId, url, segmentLimit, leadLimit).catch((err) => {
+      updateJob(jobId, { status: 'error', error: err.message });
+    })
+  );
 });
 
 // "local" segments (restaurants, clinics, etc.) — findable on Google Maps.
