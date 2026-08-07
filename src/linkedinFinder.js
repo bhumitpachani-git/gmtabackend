@@ -1,15 +1,5 @@
-const puppeteer = require('puppeteer');
-
-// DuckDuckGo's HTML result links are redirect wrappers (duckduckgo.com/l/?uddg=<real-url>).
-function resolveRealUrl(href) {
-  try {
-    const u = new URL(href);
-    const real = u.searchParams.get('uddg');
-    return real ? decodeURIComponent(real) : href;
-  } catch {
-    return href;
-  }
-}
+const { resolveRealUrl } = require('./ddgUtil');
+const { launchBrowser } = require('./browserLauncher');
 
 // LinkedIn result titles look like "Patrick Collison - Stripe CEO | LinkedIn" or
 // "John Collison - President at Stripe | LinkedIn" — split off the name and role.
@@ -42,7 +32,7 @@ function parseProfile(result, companyName) {
 // specifically trips DuckDuckGo's bot-detection error page (confirmed in testing) — a plain
 // keyword search without that operator works reliably instead.
 async function findLinkedInProfiles(companyName, { maxResults = 3 } = {}) {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -72,7 +62,7 @@ async function findLinkedInProfiles(companyName, { maxResults = 3 } = {}) {
     const profiles = [];
     for (const raw of rawResults) {
       const href = resolveRealUrl(raw.href);
-      if (!href.includes('linkedin.com/in/')) continue;
+      if (!href || !href.includes('linkedin.com/in/')) continue;
 
       const parsed = parseProfile({ ...raw, href }, companyName);
       if (parsed) profiles.push(parsed);

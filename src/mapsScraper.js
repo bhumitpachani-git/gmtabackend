@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('./browserLauncher');
 
 const FEED_SELECTOR = 'div[role="feed"]';
 
@@ -75,7 +75,7 @@ function mergeUnique(existing, incoming, maxResults) {
 }
 
 async function scrapeGoogleMaps(query, location, { maxResults = 20, maxDurationMs = 90000 } = {}) {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await launchBrowser();
   const startedAt = Date.now();
   const results = [];
 

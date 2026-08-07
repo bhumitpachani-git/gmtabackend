@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('./browserLauncher');
 
 const PRIORITY_KEYWORDS = [
   'pricing', 'plans', 'price',
@@ -44,7 +44,7 @@ async function crawlSite(
   { maxPages = 12, delayMs = 300, pageTimeoutMs = 15000, maxDurationMs = 90000 } = {}
 ) {
   const origin = new URL(startUrl).origin;
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await launchBrowser();
   const pages = [];
   const visited = new Set();
   const queue = [normalizeUrl(startUrl)].filter(Boolean);

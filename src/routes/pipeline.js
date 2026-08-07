@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('../browserLauncher');
 const { crawlSite } = require('../scraper');
 const { analyzeBusiness } = require('../sarvam');
 const { generateCustomerSegments } = require('../customerSegments');
@@ -196,7 +196,7 @@ router.post('/pipeline/:sessionId/emails', (req, res) => {
       : session.decisionMakers.map((_, i) => i);
 
   const jobId = startJob(async () => {
-    const browser = await puppeteer.launch({ headless: 'new' });
+    const browser = await launchBrowser();
     const emails = [];
 
     try {

@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('../browserLauncher');
 const { crawlSite } = require('../scraper');
 const { analyzeBusiness } = require('../sarvam');
 const { generateCustomerSegments } = require('../customerSegments');
@@ -160,7 +160,7 @@ async function runGrow(jobId, url, segmentLimit, leadLimit) {
   updateJob(jobId, { status: 'processing', stage: 'finding_leads', location });
 
   const chosenSegments = segments.slice(0, segmentLimit);
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await launchBrowser();
   const segmentResults = [];
 
   try {
