@@ -3,12 +3,26 @@ const { crawlSite } = require('./scraper');
 const { extractCompanyNames } = require('./companyExtractor');
 const { classifySearchResults } = require('./searchResultClassifier');
 
-// DuckDuckGo's HTML result links are redirect wrappers (duckduckgo.com/l/?uddg=<real-url>).
+// DuckDuckGo wraps organic result links as duckduckgo.com/l/?uddg=<real-url>, and sponsored
+///ad results as duckduckgo.com/y.js?ad_domain=<domain>&... (a click-tracking redirect, not
+// a real URL at all) — confirmed in testing: an ad result for a "stripe" search came back
+// with the tracker link itself as the "website", which would be useless to anyone (crawling
+// it hits an ad click-through, not the company's actual site). Unwrap both formats; if
+// neither applies and the link is still a duckduckgo.com URL, there's nothing real to
+// extract, so return null rather than a link that isn't the company's site.
 function resolveRealUrl(href) {
   try {
     const u = new URL(href);
-    const real = u.searchParams.get('uddg');
-    return real ? decodeURIComponent(real) : href;
+    if (u.hostname.includes('duckduckgo.com')) {
+      const uddg = u.searchParams.get('uddg');
+      if (uddg) return decodeURIComponent(uddg);
+
+      const adDomain = u.searchParams.get('ad_domain');
+      if (adDomain) return `https://${adDomain}`;
+
+      return null; // some other duckduckgo.com URL we can't resolve to a real site
+    }
+    return href;
   } catch {
     return href;
   }
@@ -40,7 +54,9 @@ async function ddgSearch(query) {
         .filter((r) => r.title && r.href);
     });
 
-    return results.map((r) => ({ ...r, href: resolveRealUrl(r.href) }));
+    return results
+      .map((r) => ({ ...r, href: resolveRealUrl(r.href) }))
+      .filter((r) => r.href); // drop anything that couldn't be resolved to a real URL
   } finally {
     await browser.close();
   }
