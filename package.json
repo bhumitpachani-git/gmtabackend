@@ -1,0 +1,15 @@
+{
+  "name": "competitor-scraper-bot",
+  "version": "1.0.0",
+  "description": "Node.js Chrome scraper bot that reads a website's pages and uses Sarvam AI to extract structured business/competitor details",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "puppeteer": "^22.15.0"
+  }
+}
