@@ -58,6 +58,22 @@ async function extractPeople(text) {
   }
 }
 
+// One outreach contact per company, not a grab-bag of everyone on the leadership page —
+// ranked by who actually makes buying decisions: CEO first, then CTO, then any other
+// manager-level title, then other leadership (founder/president/head of.../owner).
+const TITLE_PRIORITY = [
+  /\bchief executive|\bceo\b/i,
+  /\bchief technology|\bcto\b/i,
+  /\bmanager\b/i,
+  /\bfounder|\bpresident|\bhead of|\bmanaging director|\bowner\b/i,
+];
+
+function titleRank(title) {
+  if (!title) return TITLE_PRIORITY.length;
+  const rank = TITLE_PRIORITY.findIndex((pattern) => pattern.test(title));
+  return rank === -1 ? TITLE_PRIORITY.length : rank;
+}
+
 // Primary: real people's public LinkedIn profiles via search snippets — far more reliable
 // than crawling a company's own site, confirmed in testing (a company's "About" page
 // crawl found zero named leadership for Stripe; a LinkedIn search immediately surfaced
@@ -83,7 +99,9 @@ async function findDecisionMakers(companyName, websiteUrl) {
     merged.push(person);
   }
 
-  return merged.slice(0, 5);
+  if (!merged.length) return [];
+  const best = merged.slice().sort((a, b) => titleRank(a.title) - titleRank(b.title))[0];
+  return [best];
 }
 
 module.exports = { findDecisionMakers };
