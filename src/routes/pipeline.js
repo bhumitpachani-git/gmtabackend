@@ -13,8 +13,37 @@ const { deriveLocation } = require('../locationUtil');
 const { createJob, updateJob, getJob } = require('../jobStore');
 const { createSession, getSession, updateSession } = require('../sessionStore');
 const { runInBackground } = require('../backgroundWork');
+const { emitEvent, subscribe } = require('../eventBus');
 
 const router = express.Router();
+
+// Server-Sent Events: push each competitor/customer/decision-maker to the frontend the
+// moment a step handler finds it, instead of the frontend only finding out once the
+// whole step's job/poll cycle finishes. One connection covers every step for a session.
+router.get('/pipeline/:sessionId/stream', (req, res) => {
+  const session = getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('\n');
+
+  const unsubscribe = subscribe(req.params.sessionId, (event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
+
+  // Some proxies (including Render's) drop an HTTP connection that goes quiet for too
+  // long — a periodic comment line keeps this one open without being a real event.
+  const heartbeat = setInterval(() => res.write(':heartbeat\n\n'), 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 
 // Every step follows the same shape: validate the session has what this step needs,
 // respond 202 with a jobId immediately, run the real work in the background, and store
@@ -71,6 +100,7 @@ router.post('/pipeline/:sessionId/competitors', (req, res) => {
 
   const jobId = startJob(async () => {
     const competitors = await findCompetitors(session.company);
+    emitEvent(req.params.sessionId, { step: 'competitors', type: 'result', items: competitors });
     updateSession(req.params.sessionId, { competitors });
     return { competitors };
   });
@@ -86,6 +116,7 @@ router.post('/pipeline/:sessionId/campaigns', (req, res) => {
 
   const jobId = startJob(async () => {
     const campaigns = await generateCustomerSegments(session.company);
+    emitEvent(req.params.sessionId, { step: 'campaigns', type: 'result', items: campaigns });
     updateSession(req.params.sessionId, { campaigns });
     return { campaigns };
   });
@@ -110,6 +141,11 @@ router.post('/pipeline/:sessionId/customers', (req, res) => {
     const location = deriveLocation(session.company);
     const customers = [];
 
+    const pushCustomer = (customer) => {
+      customers.push(customer);
+      emitEvent(req.params.sessionId, { step: 'customers', type: 'item', item: customer });
+    };
+
     for (const idx of indexes) {
       const campaign = session.campaigns[idx];
       if (!campaign) continue;
@@ -119,7 +155,7 @@ router.post('/pipeline/:sessionId/customers', (req, res) => {
       try {
         if (campaign.type === 'local') {
           if (!location) {
-            customers.push({ campaignIndex: idx, type: 'local', error: 'No location available for this campaign' });
+            pushCustomer({ campaignIndex: idx, type: 'local', error: 'No location available for this campaign' });
             continue;
           }
           const leads = await scrapeGoogleMaps(campaign.searchQuery, location, { maxResults: limit });
@@ -127,17 +163,18 @@ router.post('/pipeline/:sessionId/customers', (req, res) => {
             // Maps doesn't always show a website even when one exists — guess-and-verify
             // from the name so a missing Maps field doesn't block email-finding downstream.
             const website = lead.website || (lead.name ? await guessAndVerifyDomain(lead.name) : null);
-            customers.push({ campaignIndex: idx, type: 'local', ...lead, website });
+            pushCustomer({ campaignIndex: idx, type: 'local', ...lead, website });
           }
         } else {
           const companies = await searchCompanies(campaign.searchQuery, { maxResults: limit });
-          companies.forEach((company) => customers.push({ campaignIndex: idx, type: 'online', ...company }));
+          companies.forEach((company) => pushCustomer({ campaignIndex: idx, type: 'online', ...company }));
         }
       } catch (err) {
-        customers.push({ campaignIndex: idx, type: campaign.type, error: err.message });
+        pushCustomer({ campaignIndex: idx, type: campaign.type, error: err.message });
       }
     }
 
+    emitEvent(req.params.sessionId, { step: 'customers', type: 'done' });
     updateSession(req.params.sessionId, { customers, location });
     return { customers, location };
   });
@@ -165,18 +202,21 @@ router.post('/pipeline/:sessionId/decision-makers', (req, res) => {
       if (!customer || !customer.website) continue;
 
       const people = await findDecisionMakers(customer.name, customer.website).catch(() => []);
-      people.forEach((person) =>
-        decisionMakers.push({
+      people.forEach((person) => {
+        const dm = {
           customerIndex: idx,
           company: customer.name,
           website: customer.website,
           personName: person.name,
           personTitle: person.title,
           personLinkedIn: person.linkedinUrl || null,
-        })
-      );
+        };
+        decisionMakers.push(dm);
+        emitEvent(req.params.sessionId, { step: 'decisionMakers', type: 'item', item: dm });
+      });
     }
 
+    emitEvent(req.params.sessionId, { step: 'decisionMakers', type: 'done' });
     updateSession(req.params.sessionId, { decisionMakers });
     return { decisionMakers };
   });
